@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+  <id>org.sighmon.PowerwallTV</id>
+  <name>Powerwall TV</name>
+  <summary>Tesla Powerwall dashboard for Linux</summary>
+  <description>
+    <p>Monitor your Tesla Powerwall using local network access or the Tesla Fleet API.</p>
+  </description>
+  <launchable type="desktop-id">org.sighmon.PowerwallTV.desktop</launchable>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <provides>
+    <binary>powerwall-tv</binary>
+  </provides>
+</component>

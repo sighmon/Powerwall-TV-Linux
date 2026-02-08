@@ -1,0 +1,16 @@
+# Secrets
+internal/auth/secrets.go
+.env
+.env.*
+.envrc
+
+# Build outputs
+bin/
+build/
+build-fast/
+powerwall-tv
+
+# Editor/OS noise
+.DS_Store
+*.swp
+*.swo
