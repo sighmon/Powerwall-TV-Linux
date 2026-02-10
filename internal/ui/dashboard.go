@@ -406,29 +406,39 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	if w.width == 0 || w.height == 0 {
 		return
 	}
-	bw, bh := 1280.0, 720.0
 	ww, wh := float64(w.width), float64(w.height)
-	scale := ww / bw
-	if wh/bh < scale {
-		scale = wh / bh
-	}
-	offX := (ww - bw*scale) / 2
-	offY := (wh - bh*scale) / 2
-	pt := func(x, y float64) (float64, float64) { return offX + x*scale, offY + y*scale }
+	cx, cy := ww/2, wh/2
+	hw, hh := ww/2, wh/2
 
-	// Anchors tuned to the house background landmarks (base 1280x720):
+	type np2 struct{ nx, ny float64 }
+	toAbs := func(p np2) (float64, float64) {
+		return cx + p.nx*hw, cy + p.ny*hh
+	}
+
+	// All path points are normalized relative to screen centre:
+	// nx = (x - centerX) / halfWidth, ny = (y - centerY) / halfHeight
+	// Values below were converted from the original 1280x720 tuning points.
+	// This keeps anchors stable as the background scales with the window.
+	solarN := np2{nx: -0.1171875, ny: -0.5}               // (565,180)
+	homeN := np2{nx: 0.421875, ny: -0.25}                 // (910,270)
+	pwrN := np2{nx: -0.046875, ny: 0.5833333333333334}   // (610,570)
+	gridN := np2{nx: 0.4140625, ny: 0.5972222222222222}  // (905,575)
+	hubLTN := np2{nx: 0.15625, ny: -0.08333333333333333} // (740,330)
+	hubRBN := np2{nx: 0.234375, ny: 0.011111111111111112} // (790,364)
+
+	// Anchors tuned to house landmarks:
 	// - Solar: roof panels
 	// - Home: window
 	// - Powerwall: lower-left white box
 	// - Grid: lower-right down-line anchor
-	solarX, solarY := pt(565, 180)
-	homeX, homeY := pt(910, 270)
-	pwrX, pwrY := pt(610, 570)
-	gridX, gridY := pt(905, 575)
+	solarX, solarY := toAbs(solarN)
+	homeX, homeY := toAbs(homeN)
+	pwrX, pwrY := toAbs(pwrN)
+	gridX, gridY := toAbs(gridN)
 
 	// Middle junction box all lines pass through, but paths touch edges only.
-	hubL, hubT := pt(740, 330)
-	hubR, hubB := pt(790, 364)
+	hubL, hubT := toAbs(hubLTN)
+	hubR, hubB := toAbs(hubRBN)
 	hubCx, hubCy := (hubL+hubR)/2, (hubT+hubB)/2
 
 	// Draw hub box
@@ -525,13 +535,51 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 		cr.Stroke()
 	}
 
-	// Split topology around gateway (no overlap through middle box interior)
-	pathSolarToHub := []p2{{solarX, solarY}, {hubL, hubCy}}
-	pathPowerwallToHub := []p2{{pwrX, pwrY}, {hubCx, hubB}}
-	pathGridToHub := []p2{{gridX, gridY}, {hubR, hubB}}
-	pathHubToHome := []p2{{hubR, hubCy}, {homeX, homeY}}
+	// Original guide geometry (used as reference for requested relative transforms)
+	origSolarPath := []p2{{solarX, solarY}, {hubL, hubCy}}
+	origPowerwallPath := []p2{{pwrX, pwrY}, {hubCx, hubB}}
 
-	// Always draw base topology segments
+	midpoint := func(a, b p2) p2 { return p2{(a.x + b.x) / 2, (a.y + b.y) / 2} }
+	dist := func(a, b p2) float64 { return math.Hypot(b.x-a.x, b.y-a.y) }
+
+	// Solar:
+	// - Start where Powerwall currently ends.
+	// - End directly down, 1/3 of Solar's current length.
+	solarStart := origPowerwallPath[1]
+	solarCurrentLen := dist(origSolarPath[0], origSolarPath[1])
+	solarLen := solarCurrentLen / 3.0
+	solarEnd := p2{solarStart.x, solarStart.y + solarLen}
+	pathSolarToHub := []p2{solarStart, solarEnd}
+
+	// Powerwall:
+	// - Start at midpoint of current Powerwall path.
+	// - End tiny bit lower/left of Solar end.
+	powerwallStart := midpoint(origPowerwallPath[0], origPowerwallPath[1])
+	powerwallEnd := p2{solarEnd.x - 0.01*ww, solarEnd.y + 0.005*wh}
+	pathPowerwallToHub := []p2{powerwallStart, powerwallEnd}
+
+	// Grid:
+	// - Start directly below Solar end, half Solar length below.
+	// - End directly down.
+	gridStart := p2{solarEnd.x, solarEnd.y + 0.5*solarLen}
+	gridEnd := p2{gridStart.x, gridStart.y + solarLen}
+	pathGridToHub := []p2{gridStart, gridEnd}
+
+	// Home:
+	// - Start 0.5% above and 2% right of Powerwall end.
+	// - End with same vector (angle + length) as Powerwall.
+	homeStart := p2{powerwallEnd.x + 0.02*ww, powerwallEnd.y - 0.005*wh}
+	pwrVec := p2{powerwallEnd.x - powerwallStart.x, powerwallEnd.y - powerwallStart.y}
+	homeEnd := p2{homeStart.x + pwrVec.x, homeStart.y + pwrVec.y}
+	pathHubToHome := []p2{homeStart, homeEnd}
+
+	// Keep Home endpoint available for any future label/anchor debugging reference.
+	_ = homeX
+	_ = homeY
+	_ = gridX
+	_ = gridY
+
+	// Draw updated topology
 	drawBase(pathSolarToHub)
 	drawBase(pathPowerwallToHub)
 	drawBase(pathGridToHub)
@@ -556,7 +604,7 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	dSolar := lSolar / maxLen
 	dPwr := lPwr / maxLen
 	dGrid := lGrid / maxLen
-	dHome := lHome / maxLen
+	_ = lHome // kept for readability; home leg timing follows source leg to match SwiftUI feel
 	trail := 0.35
 
 	// Incoming segments to gateway
@@ -580,7 +628,10 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 			sourceDur = dPwr
 		}
 		arrivalAtGateway := sourceDur * (1.0 / (1.0 + trail))
-		pulsePath(pathHubToHome, true, true, r, g, b, arrivalAtGateway, dHome)
+		// Match SwiftUI feel: keep gateway->home on approximately the same time budget
+		// as the active source leg (instead of shortening by path length).
+		homeDur := sourceDur
+		pulsePath(pathHubToHome, true, true, r, g, b, arrivalAtGateway, homeDur)
 	}
 }
 
