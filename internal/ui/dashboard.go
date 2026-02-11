@@ -421,9 +421,9 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	// This keeps anchors stable as the background scales with the window.
 	solarN := np2{nx: -0.1171875, ny: -0.5}               // (565,180)
 	homeN := np2{nx: 0.421875, ny: -0.25}                 // (910,270)
-	pwrN := np2{nx: -0.046875, ny: 0.5833333333333334}   // (610,570)
-	gridN := np2{nx: 0.4140625, ny: 0.5972222222222222}  // (905,575)
-	hubLTN := np2{nx: 0.15625, ny: -0.08333333333333333} // (740,330)
+	pwrN := np2{nx: -0.046875, ny: 0.5833333333333334}    // (610,570)
+	gridN := np2{nx: 0.4140625, ny: 0.5972222222222222}   // (905,575)
+	hubLTN := np2{nx: 0.15625, ny: -0.08333333333333333}  // (740,330)
 	hubRBN := np2{nx: 0.234375, ny: 0.011111111111111112} // (790,364)
 
 	// Anchors tuned to house landmarks:
@@ -607,23 +607,49 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	_ = lHome // kept for readability; home leg timing follows source leg to match SwiftUI feel
 	trail := 0.35
 
-	// Incoming segments to gateway
-	pulsePath(pathSolarToHub, w.solarP > 30, true, 0.98, 0.82, 0.24, 0, dSolar)
-	pulsePath(pathPowerwallToHub, math.Abs(w.batteryP) > 30, w.batteryP > 0, 0.36, 0.82, 0.38, 0, dPwr)
-	pulsePath(pathGridToHub, math.Abs(w.gridP) > 30, w.gridP > 0, 0.72, 0.72, 0.72, 0, dGrid)
-
-	// Gateway -> Home starts only after source pulse head reaches gateway.
+	// Estimate directional source flows from balance so direction/colour remain correct
+	// even when API sign conventions vary.
+	homeDemand := math.Max(0, w.homeP)
 	solarSupply := math.Max(0, w.solarP)
-	batterySupply := math.Max(0, w.batteryP) // +ve means battery discharging to home
-	gridSupply := math.Max(0, w.gridP)       // +ve means grid importing to home
-	homeFlow := math.Max(0, w.homeP)
-	if homeFlow > 30 {
+	batteryDischarge := math.Max(0, w.batteryP) // +ve means battery discharging
+
+	solarToHome := math.Min(solarSupply, homeDemand)
+	remainingAfterSolar := math.Max(0, homeDemand-solarToHome)
+	batteryToHome := math.Min(batteryDischarge, remainingAfterSolar)
+	remainingAfterBattery := math.Max(0, remainingAfterSolar-batteryToHome)
+	gridImport := remainingAfterBattery
+	gridExport := math.Max(0, solarSupply+batteryDischarge-homeDemand)
+
+	// Export source split for grid colour when exporting.
+	solarExcess := math.Max(0, solarSupply-homeDemand)
+	batteryToGrid := math.Max(0, gridExport-solarExcess)
+	exportColor := [3]float64{0.98, 0.82, 0.24} // solar default
+	if batteryToGrid >= solarExcess {
+		exportColor = [3]float64{0.36, 0.82, 0.38}
+	}
+
+	// Incoming segments to gateway
+	pulsePath(pathSolarToHub, solarSupply > 30, true, 0.98, 0.82, 0.24, 0, dSolar)
+	pulsePath(pathPowerwallToHub, math.Abs(w.batteryP) > 30, w.batteryP > 0, 0.36, 0.82, 0.38, 0, dPwr)
+	// Grid path: direction follows actual grid sign; colour reflects export source.
+	gridOn := math.Abs(w.gridP) > 30 || gridImport > 30 || gridExport > 30
+	// pathGridToHub is defined from gateway-ish anchor down to grid anchor,
+	// so "forward" means gateway -> grid.
+	gridForward := w.gridP < 0 // import: false (grid -> gateway), export: true (gateway -> grid)
+	gridR, gridG, gridB := 0.72, 0.72, 0.72
+	if w.gridP < -30 || gridExport > 30 {
+		gridR, gridG, gridB = exportColor[0], exportColor[1], exportColor[2]
+	}
+	pulsePath(pathGridToHub, gridOn, gridForward, gridR, gridG, gridB, 0, dGrid)
+
+	// Gateway -> Home colour follows the biggest contributor to HOME (not raw source power).
+	if homeDemand > 30 {
 		r, g, b := 0.72, 0.72, 0.72
 		sourceDur := dGrid
-		if solarSupply >= batterySupply && solarSupply >= gridSupply {
+		if solarToHome >= batteryToHome && solarToHome >= gridImport {
 			r, g, b = 0.98, 0.82, 0.24
 			sourceDur = dSolar
-		} else if batterySupply >= solarSupply && batterySupply >= gridSupply {
+		} else if batteryToHome >= solarToHome && batteryToHome >= gridImport {
 			r, g, b = 0.36, 0.82, 0.38
 			sourceDur = dPwr
 		}
