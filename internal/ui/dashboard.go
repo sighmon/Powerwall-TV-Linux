@@ -415,44 +415,29 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 		return cx + p.nx*hw, cy + p.ny*hh
 	}
 
-	// All path points are normalized relative to screen centre:
+	// All points are normalized relative to screen centre:
 	// nx = (x - centerX) / halfWidth, ny = (y - centerY) / halfHeight
-	// Values below were converted from the original 1280x720 tuning points.
-	// This keeps anchors stable as the background scales with the window.
+	// Converted from the original 1280x720 tuning points so anchors scale cleanly.
 	solarN := np2{nx: -0.1171875, ny: -0.5}               // (565,180)
-	homeN := np2{nx: 0.421875, ny: -0.25}                 // (910,270)
 	pwrN := np2{nx: -0.046875, ny: 0.5833333333333334}    // (610,570)
-	gridN := np2{nx: 0.4140625, ny: 0.5972222222222222}   // (905,575)
-	hubLTN := np2{nx: 0.15625, ny: -0.08333333333333333}  // (740,330)
-	hubRBN := np2{nx: 0.234375, ny: 0.011111111111111112} // (790,364)
+	junctionLTN := np2{nx: 0.15625, ny: -0.08333333333333333}  // (740,330)
+	junctionRBN := np2{nx: 0.234375, ny: 0.011111111111111112} // (790,364)
 
-	// Anchors tuned to house landmarks:
-	// - Solar: roof panels
-	// - Home: window
-	// - Powerwall: lower-left white box
-	// - Grid: lower-right down-line anchor
 	solarX, solarY := toAbs(solarN)
-	homeX, homeY := toAbs(homeN)
 	pwrX, pwrY := toAbs(pwrN)
-	gridX, gridY := toAbs(gridN)
 
-	// Middle junction box all lines pass through, but paths touch edges only.
-	hubL, hubT := toAbs(hubLTN)
-	hubR, hubB := toAbs(hubRBN)
-	hubCx, hubCy := (hubL+hubR)/2, (hubT+hubB)/2
-
-	// Draw hub box
-	cr.SetLineWidth(2)
-	cr.SetSourceRGBA(1, 1, 1, 0.22)
-	cr.Rectangle(hubL, hubT, hubR-hubL, hubB-hubT)
-	cr.Stroke()
+	// Virtual junction anchors used for flow geometry.
+	junctionL, junctionT := toAbs(junctionLTN)
+	junctionR, junctionB := toAbs(junctionRBN)
+	junctionCx, junctionCy := (junctionL+junctionR)/2, (junctionT+junctionB)/2
 
 	type p2 struct{ x, y float64 }
+	const baseLineWidth = 4.0
 	drawBase := func(path []p2) {
 		if len(path) < 2 {
 			return
 		}
-		cr.SetLineWidth(4)
+		cr.SetLineWidth(baseLineWidth)
 		cr.SetSourceRGBA(1, 1, 1, 0.16)
 		cr.MoveTo(path[0].x, path[0].y)
 		for i := 1; i < len(path); i++ {
@@ -479,24 +464,22 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 		}
 
 		trail := 0.35 // pulse length as fraction of total path
+		if durationFrac <= 0 {
+			return
+		}
+		// Normalize start into [0..1) and allow wrap into next cycle so speed stays constant.
+		startAt = math.Mod(startAt, 1)
 		if startAt < 0 {
-			startAt = 0
+			startAt += 1
 		}
-		if durationFrac <= 0 {
+		local := w.animPhase - startAt
+		if local < 0 {
+			local += 1
+		}
+		if local < 0 || local > durationFrac {
 			return
 		}
-		// Ensure the segment can fully complete within this cycle.
-		if startAt+durationFrac > 1 {
-			durationFrac = 1 - startAt
-		}
-		if durationFrac <= 0 {
-			return
-		}
-		endAt := startAt + durationFrac
-		if w.animPhase < startAt || w.animPhase > endAt {
-			return
-		}
-		localPhase := (w.animPhase - startAt) / durationFrac // [0..1] over this path's duration
+		localPhase := local / durationFrac // [0..1] over this path's duration
 		prog := localPhase * (1 + trail)                     // so tail reaches destination before reset
 		head := math.Min(1, prog)
 		tail := math.Max(0, prog-trail)
@@ -536,8 +519,8 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	}
 
 	// Original guide geometry (used as reference for requested relative transforms)
-	origSolarPath := []p2{{solarX, solarY}, {hubL, hubCy}}
-	origPowerwallPath := []p2{{pwrX, pwrY}, {hubCx, hubB}}
+	origSolarPath := []p2{{solarX, solarY}, {junctionL, junctionCy}}
+	origPowerwallPath := []p2{{pwrX, pwrY}, {junctionCx, junctionB}}
 
 	midpoint := func(a, b p2) p2 { return p2{(a.x + b.x) / 2, (a.y + b.y) / 2} }
 	dist := func(a, b p2) float64 { return math.Hypot(b.x-a.x, b.y-a.y) }
@@ -573,11 +556,21 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	homeEnd := p2{homeStart.x + pwrVec.x, homeStart.y + pwrVec.y}
 	pathHubToHome := []p2{homeStart, homeEnd}
 
-	// Keep Home endpoint available for any future label/anchor debugging reference.
-	_ = homeX
-	_ = homeY
-	_ = gridX
-	_ = gridY
+	// Positional nudge requests (relative to current stroke width):
+	// - Solar->Gateway and Gateway->Grid: right by 2x line width
+	// - Powerwall->Gateway and Gateway->Home: up by 2x line width
+	pathShift := 2 * baseLineWidth
+	offsetPath := func(path []p2, dx, dy float64) []p2 {
+		out := make([]p2, len(path))
+		for i := range path {
+			out[i] = p2{x: path[i].x + dx, y: path[i].y + dy}
+		}
+		return out
+	}
+	pathSolarToHub = offsetPath(pathSolarToHub, pathShift, 0)
+	pathGridToHub = offsetPath(pathGridToHub, pathShift, 0)
+	pathPowerwallToHub = offsetPath(pathPowerwallToHub, 0, -pathShift)
+	pathHubToHome = offsetPath(pathHubToHome, 0, -pathShift)
 
 	// Draw updated topology
 	drawBase(pathSolarToHub)
@@ -604,8 +597,6 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	dSolar := lSolar / maxLen
 	dPwr := lPwr / maxLen
 	dGrid := lGrid / maxLen
-	_ = lHome // kept for readability; home leg timing follows source leg to match SwiftUI feel
-	trail := 0.35
 
 	// Estimate directional source flows from balance so direction/colour remain correct
 	// even when API sign conventions vary.
@@ -640,7 +631,16 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	if w.gridP < -30 || gridExport > 30 {
 		gridR, gridG, gridB = exportColor[0], exportColor[1], exportColor[2]
 	}
-	pulsePath(pathGridToHub, gridOn, gridForward, gridR, gridG, gridB, 0, dGrid)
+	// For export (gateway->grid), wait until the source tail reaches gateway.
+	gridPulseStart := dPwr
+	if gridForward {
+		if solarExcess >= batteryToGrid {
+			gridPulseStart = dSolar + dPwr
+		} else {
+			gridPulseStart = dPwr + dPwr
+		}
+	}
+	pulsePath(pathGridToHub, gridOn, gridForward, gridR, gridG, gridB, gridPulseStart, dGrid)
 
 	// Gateway -> Home colour follows the biggest contributor to HOME (not raw source power).
 	if homeDemand > 30 {
@@ -653,11 +653,15 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 			r, g, b = 0.36, 0.82, 0.38
 			sourceDur = dPwr
 		}
-		arrivalAtGateway := sourceDur * (1.0 / (1.0 + trail))
-		// Match SwiftUI feel: keep gateway->home on approximately the same time budget
-		// as the active source leg (instead of shortening by path length).
-		homeDur := sourceDur
-		pulsePath(pathHubToHome, true, true, r, g, b, arrivalAtGateway, homeDur)
+		// Start after winning source tail reaches gateway, then offset by
+		// total Powerwall->Gateway animation time.
+		homeStart := sourceDur + dPwr
+		// Keep Gateway->Home speed equal to Powerwall->Gateway speed (px per cycle).
+		homeDur := dPwr
+		if lPwr > 0 {
+			homeDur = dPwr * (lHome / lPwr)
+		}
+		pulsePath(pathHubToHome, true, true, r, g, b, homeStart, homeDur)
 	}
 }
 
