@@ -463,7 +463,7 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 			return
 		}
 
-		trail := 0.35 // pulse length as fraction of total path
+		trail := 1.05 // pulse length as fraction of total path (3x original; 1.5x from 0.70)
 		if durationFrac <= 0 {
 			return
 		}
