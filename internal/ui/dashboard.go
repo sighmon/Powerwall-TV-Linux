@@ -433,6 +433,8 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 
 	type p2 struct{ x, y float64 }
 	const baseLineWidth = 4.0
+	const pulseTrail = 1.0
+	const gatewayTransitFrac = 0.3 / 2.2 // 0.3s through gateway over ~2.2s animation cycle
 	drawBase := func(path []p2) {
 		if len(path) < 2 {
 			return
@@ -463,7 +465,7 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 			return
 		}
 
-		trail := 1.05 // pulse length as fraction of total path (3x original; 1.5x from 0.70)
+		trail := pulseTrail // pulse length as fraction of total path
 		if durationFrac <= 0 {
 			return
 		}
@@ -631,13 +633,17 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	if w.gridP < -30 || gridExport > 30 {
 		gridR, gridG, gridB = exportColor[0], exportColor[1], exportColor[2]
 	}
-	// For export (gateway->grid), wait until the source tail reaches gateway.
-	gridPulseStart := dPwr
+	// For export (gateway->grid), start when the source HEAD reaches gateway,
+	// then keep the extra +dPwr offset requested earlier.
+	headArrival := func(sourceDur float64) float64 {
+		return sourceDur * (1.0 / (1.0 + pulseTrail))
+	}
+	gridPulseStart := dPwr + gatewayTransitFrac
 	if gridForward {
 		if solarExcess >= batteryToGrid {
-			gridPulseStart = dSolar + dPwr
+			gridPulseStart = headArrival(dSolar) + dPwr + gatewayTransitFrac
 		} else {
-			gridPulseStart = dPwr + dPwr
+			gridPulseStart = headArrival(dPwr) + dPwr + gatewayTransitFrac
 		}
 	}
 	pulsePath(pathGridToHub, gridOn, gridForward, gridR, gridG, gridB, gridPulseStart, dGrid)
@@ -653,9 +659,9 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 			r, g, b = 0.36, 0.82, 0.38
 			sourceDur = dPwr
 		}
-		// Start after winning source tail reaches gateway, then offset by
-		// total Powerwall->Gateway animation time.
-		homeStart := sourceDur + dPwr
+		// Start after winning source HEAD reaches gateway, then offset by
+		// total Powerwall->Gateway animation time + gateway transit delay.
+		homeStart := headArrival(sourceDur) + dPwr + gatewayTransitFrac
 		// Keep Gateway->Home speed equal to Powerwall->Gateway speed (px per cycle).
 		homeDur := dPwr
 		if lPwr > 0 {
