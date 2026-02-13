@@ -531,31 +531,35 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	// - Start where Powerwall currently ends.
 	// - End directly down, 1/3 of Solar's current length.
 	solarStart := origPowerwallPath[1]
+	solarStart.x -= 2
+	solarStart.y += 20
 	solarCurrentLen := dist(origSolarPath[0], origSolarPath[1])
-	solarLen := solarCurrentLen / 3.0
-	solarEnd := p2{solarStart.x, solarStart.y + solarLen}
+	solarLen := solarCurrentLen / 3.8
+	solarEnd := p2{solarStart.x, solarStart.y + solarLen - 20}
 	pathSolarToHub := []p2{solarStart, solarEnd}
 
 	// Powerwall:
 	// - Start at midpoint of current Powerwall path.
 	// - End tiny bit lower/left of Solar end.
 	powerwallStart := midpoint(origPowerwallPath[0], origPowerwallPath[1])
-	powerwallEnd := p2{solarEnd.x - 0.01*ww, solarEnd.y + 0.005*wh}
+	powerwallStart.x -= 10
+	powerwallStart.y += 3
+	powerwallEnd := p2{solarEnd.x - 0.01*ww + 12, solarEnd.y + 0.005*wh + 17}
 	pathPowerwallToHub := []p2{powerwallStart, powerwallEnd}
 
 	// Grid:
 	// - Start directly below Solar end, half Solar length below.
 	// - End directly down.
-	gridStart := p2{solarEnd.x, solarEnd.y + 0.5*solarLen}
-	gridEnd := p2{gridStart.x, gridStart.y + solarLen}
+	gridStart := p2{solarEnd.x, solarEnd.y + 0.5*solarLen + 10}
+	gridEnd := p2{gridStart.x, gridStart.y + solarLen - 34}
 	pathGridToHub := []p2{gridStart, gridEnd}
 
 	// Home:
 	// - Start 0.5% above and 2% right of Powerwall end.
 	// - End with same vector (angle + length) as Powerwall.
-	homeStart := p2{powerwallEnd.x + 0.02*ww, powerwallEnd.y - 0.005*wh}
+	homeStart := p2{powerwallEnd.x + 0.02*ww - 8, powerwallEnd.y - 0.005*wh}
 	pwrVec := p2{powerwallEnd.x - powerwallStart.x, powerwallEnd.y - powerwallStart.y}
-	homeEnd := p2{homeStart.x + pwrVec.x, homeStart.y + pwrVec.y}
+	homeEnd := p2{homeStart.x + pwrVec.x - 10, homeStart.y + pwrVec.y + 2}
 	pathHubToHome := []p2{homeStart, homeEnd}
 
 	// Positional nudge requests (relative to current stroke width):
