@@ -490,7 +490,7 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 			tail = 1 - math.Max(0, prog-trail)
 		}
 
-		// Convert t in [0..1] to point on polyline
+		// Convert t in [0..1] to point on polyline.
 		pointAt := func(t float64) p2 {
 			t = math.Max(0, math.Min(1, t))
 			target := t * total
@@ -511,12 +511,44 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 			return path[len(path)-1]
 		}
 
-		pHead := pointAt(head)
-		pTail := pointAt(tail)
+		// Draw pulse by tracing the polyline section from tail->head so bends are respected.
+		segmentRange := func(t0, t1 float64) []p2 {
+			t0 = math.Max(0, math.Min(1, t0))
+			t1 = math.Max(0, math.Min(1, t1))
+			if t1 < t0 {
+				t0, t1 = t1, t0
+			}
+			if len(path) < 2 {
+				return nil
+			}
+
+			startDist := t0 * total
+			endDist := t1 * total
+			acc := 0.0
+			pts := make([]p2, 0, len(path)+2)
+			pts = append(pts, pointAt(t0))
+
+			for i := 0; i < len(lens); i++ {
+				next := acc + lens[i]
+				if next > startDist && next < endDist {
+					pts = append(pts, path[i+1])
+				}
+				acc = next
+			}
+			pts = append(pts, pointAt(t1))
+			return pts
+		}
+
+		pts := segmentRange(tail, head)
+		if len(pts) < 2 {
+			return
+		}
 		cr.SetLineWidth(5)
 		cr.SetSourceRGBA(r, g, b, 0.95)
-		cr.MoveTo(pTail.x, pTail.y)
-		cr.LineTo(pHead.x, pHead.y)
+		cr.MoveTo(pts[0].x, pts[0].y)
+		for i := 1; i < len(pts); i++ {
+			cr.LineTo(pts[i].x, pts[i].y)
+		}
 		cr.Stroke()
 	}
 
