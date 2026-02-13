@@ -689,41 +689,47 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 		}
 	}
 	pulsePath(pathPowerwallToHub, batteryOn, batteryForward, batteryR, batteryG, batteryB, batteryStart, dPwr)
-	// Grid path: direction follows actual grid sign; colour reflects export source.
-	gridOn := math.Abs(w.gridP) > 30 || gridImport > 30 || gridExport > 30
-	// pathGridToHub is defined from gateway-ish anchor down to grid anchor,
-	// so "forward" means gateway -> grid.
-	gridForward := w.gridP < 0 // import: false (grid -> gateway), export: true (gateway -> grid)
-	gridR, gridG, gridB := 0.72, 0.72, 0.72
-	if w.gridP < -30 || gridExport > 30 {
-		gridR, gridG, gridB = exportColor[0], exportColor[1], exportColor[2]
-	}
-	// For export (gateway->grid), start when the source HEAD reaches gateway,
-	// then keep the extra +dPwr offset requested earlier.
-	gridPulseStart := dPwr + gatewayTransitFrac
-	if gridForward {
-		if solarExcess >= batteryToGrid {
-			gridPulseStart = headArrival(dSolar) + dPwr + gatewayTransitFrac
-		} else {
-			gridPulseStart = headArrival(dPwr) + dPwr + gatewayTransitFrac
+	// Grid path: choose direction from computed balance so sign-convention noise
+	// from APIs can't flip direction/colour.
+	// Apply a true ±20W deadband for grid animations in both directions,
+	// keyed off live measured grid power so tiny values (e.g. -0.008 kW) never animate.
+	if math.Abs(w.gridP) >= 20 {
+		// pathGridToHub is defined from gateway-ish anchor down to grid anchor,
+		// so "forward" means gateway -> grid (export).
+		gridForward := w.gridP < 0
+		gridR, gridG, gridB := 0.72, 0.72, 0.72
+		if gridForward {
+			gridR, gridG, gridB = exportColor[0], exportColor[1], exportColor[2]
 		}
+		// For export (gateway->grid), always wait for the solar->gateway HEAD
+		// to arrive at the gateway before starting the gateway->grid pulse.
+		gridPulseStart := 0.0
+		if gridForward {
+			gridPulseStart = headArrival(dSolar)
+		}
+		pulsePath(pathGridToHub, true, gridForward, gridR, gridG, gridB, gridPulseStart, dGrid)
 	}
-	pulsePath(pathGridToHub, gridOn, gridForward, gridR, gridG, gridB, gridPulseStart, dGrid)
 
 	// Gateway -> Home colour follows the biggest contributor to HOME (not raw source power).
+	// Grid-supplied home flow is always grey.
 	if homeDemand > 30 {
 		r, g, b := 0.72, 0.72, 0.72
 		sourceDur := dGrid
+		homeIsSolar := false
 		if solarToHome >= batteryToHome && solarToHome >= gridImport {
 			r, g, b = 0.98, 0.82, 0.24
 			sourceDur = dSolar
+			homeIsSolar = true
 		} else if batteryToHome >= solarToHome && batteryToHome >= gridImport {
 			r, g, b = 0.36, 0.82, 0.38
 			sourceDur = dPwr
 		}
-		// Start after winning source HEAD reaches gateway, then traverse gateway.
-		// (No extra full-path offset; this keeps Home starting right after source arrival.)
+		// Default start: after source HEAD reaches gateway, then traverse gateway.
 		homeStart := headArrival(sourceDur) + gatewayTransitFrac
+		// If home flow is solar, start exactly when gateway->powerwall solar charging starts.
+		if homeIsSolar {
+			homeStart = headArrival(dSolar)
+		}
 		// Keep Gateway->Home speed equal to Powerwall->Gateway speed (px per cycle).
 		homeDur := dPwr
 		if lPwr > 0 {
