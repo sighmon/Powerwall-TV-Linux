@@ -136,7 +136,7 @@ func buildDashboard(state *statepkg.State, charts *ChartsData, graphs *graphsWid
 		return true
 	})
 	glib.TimeoutAdd(33, func() bool {
-		w.animPhase += 0.015
+		w.animPhase += 0.012
 		if w.animPhase > 1 {
 			w.animPhase -= 1
 		}
@@ -552,7 +552,9 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	// - End directly down.
 	gridStart := p2{solarEnd.x, solarEnd.y + 0.5*solarLen + 10}
 	gridEnd := p2{gridStart.x, gridStart.y + solarLen - 34}
-	pathGridToHub := []p2{gridStart, gridEnd}
+	// Extend past the existing endpoint down/right to follow the background tail.
+	gridTail := p2{gridEnd.x + 0.092*ww, gridEnd.y + 0.06*wh}
+	pathGridToHub := []p2{gridStart, gridEnd, gridTail}
 
 	// Home:
 	// - Start 0.5% above and 2% right of Powerwall end.
@@ -687,9 +689,9 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 			r, g, b = 0.36, 0.82, 0.38
 			sourceDur = dPwr
 		}
-		// Start after winning source HEAD reaches gateway, then offset by
-		// total Powerwall->Gateway animation time + gateway transit delay.
-		homeStart := headArrival(sourceDur) + dPwr + gatewayTransitFrac
+		// Start after winning source HEAD reaches gateway, then traverse gateway.
+		// (No extra full-path offset; this keeps Home starting right after source arrival.)
+		homeStart := headArrival(sourceDur) + gatewayTransitFrac
 		// Keep Gateway->Home speed equal to Powerwall->Gateway speed (px per cycle).
 		homeDur := dPwr
 		if lPwr > 0 {
