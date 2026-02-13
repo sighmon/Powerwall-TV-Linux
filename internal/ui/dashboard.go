@@ -621,9 +621,36 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 		exportColor = [3]float64{0.36, 0.82, 0.38}
 	}
 
+	headArrival := func(sourceDur float64) float64 {
+		return sourceDur * (1.0 / (1.0 + pulseTrail))
+	}
+
 	// Incoming segments to gateway
 	pulsePath(pathSolarToHub, solarSupply > 30, true, 0.98, 0.82, 0.24, 0, dSolar)
-	pulsePath(pathPowerwallToHub, math.Abs(w.batteryP) > 30, w.batteryP > 0, 0.36, 0.82, 0.38, 0, dPwr)
+
+	// Powerwall path colour depends on direction/source:
+	// - Discharging (powerwall -> gateway): green
+	// - Charging (gateway -> powerwall): colour by dominant source into gateway (solar or grid)
+	batteryOn := math.Abs(w.batteryP) > 30
+	batteryForward := w.batteryP > 0 // true => powerwall -> gateway; false => gateway -> powerwall
+	batteryR, batteryG, batteryB := 0.36, 0.82, 0.38
+	batteryStart := 0.0
+	if !batteryForward {
+		batteryCharge := math.Max(0, -w.batteryP)
+		solarExcessForCharge := math.Max(0, solarSupply-homeDemand)
+		solarToBattery := math.Min(solarExcessForCharge, batteryCharge)
+		gridToBattery := math.Max(0, batteryCharge-solarToBattery)
+		if solarToBattery >= gridToBattery {
+			batteryR, batteryG, batteryB = 0.98, 0.82, 0.24
+			// Charging from solar: start only after solar pulse reaches gateway.
+			batteryStart = headArrival(dSolar)
+		} else {
+			batteryR, batteryG, batteryB = 0.72, 0.72, 0.72
+			// Charging from grid: start after grid pulse reaches gateway.
+			batteryStart = headArrival(dGrid)
+		}
+	}
+	pulsePath(pathPowerwallToHub, batteryOn, batteryForward, batteryR, batteryG, batteryB, batteryStart, dPwr)
 	// Grid path: direction follows actual grid sign; colour reflects export source.
 	gridOn := math.Abs(w.gridP) > 30 || gridImport > 30 || gridExport > 30
 	// pathGridToHub is defined from gateway-ish anchor down to grid anchor,
@@ -635,9 +662,6 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	}
 	// For export (gateway->grid), start when the source HEAD reaches gateway,
 	// then keep the extra +dPwr offset requested earlier.
-	headArrival := func(sourceDur float64) float64 {
-		return sourceDur * (1.0 / (1.0 + pulseTrail))
-	}
 	gridPulseStart := dPwr + gatewayTransitFrac
 	if gridForward {
 		if solarExcess >= batteryToGrid {
