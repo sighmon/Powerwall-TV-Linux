@@ -8,7 +8,7 @@ import (
 func Run(state statepkg.State) error {
 	gtk.Init(nil)
 
-	app, err := gtk.ApplicationNew("org.sighmon.PowerwallTV", 0)
+	app, err := gtk.ApplicationNew("com.sighmon.PowerwallTV", 0)
 	if err != nil {
 		return err
 	}
@@ -17,7 +17,7 @@ func Run(state statepkg.State) error {
 		win, _ := gtk.ApplicationWindowNew(app)
 		win.SetTitle("Powerwall TV")
 		win.SetDefaultSize(1280, 720)
-		win.SetIconName("org.sighmon.PowerwallTV")
+		win.SetIconName("com.sighmon.PowerwallTV")
 
 		content, _ := buildMainView(&state, win)
 		win.Add(content)

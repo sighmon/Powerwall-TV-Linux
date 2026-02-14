@@ -1,4 +1,4 @@
-APP_ID=org.sighmon.PowerwallTV
+APP_ID=com.sighmon.PowerwallTV
 FLATPAK_MANIFEST=flatpak/$(APP_ID).yml
 
 .PHONY: build run dev vendor flatpak flatpak-fast flatpak-run clean

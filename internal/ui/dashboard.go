@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -388,12 +389,42 @@ func selectHomeBackground(state *statepkg.State, wallConnectorPower float64, wal
 	return "home-charger-empty.png"
 }
 
+func resolveBackgroundPath(name string) string {
+	candidates := make([]string, 0, 6)
+	if v := os.Getenv("POWERWALL_TV_IMAGES_DIR"); v != "" {
+		candidates = append(candidates, filepath.Join(v, name))
+	}
+	candidates = append(candidates,
+		filepath.Join("/app/share/powerwall-tv/images", name),
+		filepath.Join("/home/sighmon/Code/powerwall-tv/Powerwall-TV/Images", name), // legacy dev path
+	)
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidates = append(candidates, filepath.Join(home, "Code/powerwall-tv/Powerwall-TV/Images", name))
+	}
+	if exe, err := os.Executable(); err == nil {
+		base := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(base, "../share/powerwall-tv/images", name),
+			filepath.Join(base, "assets/images", name),
+		)
+	}
+	for _, p := range candidates {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	return ""
+}
+
 func (w *dashboardWidgets) setBackground(name string) {
 	w.bgName = name
 	if w.background == nil || w.width == 0 || w.height == 0 {
 		return
 	}
-	path := filepath.Join("/home/sighmon/Code/powerwall-tv/Powerwall-TV/Images", name)
+	path := resolveBackgroundPath(name)
+	if path == "" {
+		return
+	}
 	// fill/cover (no bars)
 	pix, err := gdk.PixbufNewFromFileAtScale(path, w.width, w.height, false)
 	if err != nil {
