@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Powerwall TV
+Exec=powerwall-tv
+Type=Application
+Categories=Utility;
+Terminal=false
+Icon=com.sighmon.PowerwallTV

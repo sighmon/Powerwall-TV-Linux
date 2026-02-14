@@ -1,0 +1,37 @@
+app-id: com.sighmon.PowerwallTV
+runtime: org.gnome.Platform
+runtime-version: "46"
+sdk: org.gnome.Sdk
+command: powerwall-tv
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=home
+  - --talk-name=org.freedesktop.secrets
+build-options:
+  append-path: /usr/lib/sdk/golang/bin
+  env:
+    GOFLAGS: -mod=vendor
+modules:
+  - name: powerwall-tv
+    buildsystem: simple
+    build-commands:
+      - go build -o /app/bin/powerwall-tv ./cmd/powerwall-tv
+      - install -D flatpak/com.sighmon.PowerwallTV.desktop /app/share/applications/com.sighmon.PowerwallTV.desktop
+      - install -D flatpak/com.sighmon.PowerwallTV.metainfo.xml /app/share/metainfo/com.sighmon.PowerwallTV.metainfo.xml
+      - install -D assets/icons/com.sighmon.PowerwallTV.svg /app/share/icons/hicolor/scalable/apps/com.sighmon.PowerwallTV.svg
+      - install -D assets/icons/hicolor/16x16/apps/com.sighmon.PowerwallTV.png /app/share/icons/hicolor/16x16/apps/com.sighmon.PowerwallTV.png
+      - install -D assets/icons/hicolor/24x24/apps/com.sighmon.PowerwallTV.png /app/share/icons/hicolor/24x24/apps/com.sighmon.PowerwallTV.png
+      - install -D assets/icons/hicolor/32x32/apps/com.sighmon.PowerwallTV.png /app/share/icons/hicolor/32x32/apps/com.sighmon.PowerwallTV.png
+      - install -D assets/icons/hicolor/48x48/apps/com.sighmon.PowerwallTV.png /app/share/icons/hicolor/48x48/apps/com.sighmon.PowerwallTV.png
+      - install -D assets/icons/hicolor/64x64/apps/com.sighmon.PowerwallTV.png /app/share/icons/hicolor/64x64/apps/com.sighmon.PowerwallTV.png
+      - install -D assets/icons/hicolor/128x128/apps/com.sighmon.PowerwallTV.png /app/share/icons/hicolor/128x128/apps/com.sighmon.PowerwallTV.png
+      - install -D assets/icons/hicolor/256x256/apps/com.sighmon.PowerwallTV.png /app/share/icons/hicolor/256x256/apps/com.sighmon.PowerwallTV.png
+      - install -D assets/icons/hicolor/512x512/apps/com.sighmon.PowerwallTV.png /app/share/icons/hicolor/512x512/apps/com.sighmon.PowerwallTV.png
+      - mkdir -p /app/share/powerwall-tv/images
+      - if [ -d assets/images ]; then cp -a assets/images/. /app/share/powerwall-tv/images/; fi
+    sources:
+      - type: dir
+        path: ..
