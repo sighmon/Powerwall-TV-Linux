@@ -2,17 +2,49 @@
 <component type="desktop">
   <id>com.sighmon.PowerwallTV</id>
   <name>Powerwall TV</name>
-  <summary>Tesla Powerwall dashboard for Linux</summary>
-  <description>
-    <p>Monitor your Tesla Powerwall using local network access or the Tesla Fleet API.</p>
-  </description>
-  <launchable type="desktop-id">com.sighmon.PowerwallTV.desktop</launchable>
+  <summary>View your Tesla Powerwall status on Linux</summary>
+
+  <developer id="com.sighmon">
+    <name>Simon Loffler</name>
+  </developer>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
+
+  <description>
+    <p>
+      Powerwall TV brings your Tesla Powerwall data to the big screen on Linux.
+      It supports both local network access and Tesla Fleet API access, so you can
+      monitor your energy system at home or away.
+    </p>
+    <p>
+      In Local mode, enter your Powerwall gateway IP address and credentials to see
+      near real-time power flow and status updates. In Fleet API mode, sign in with
+      Tesla to securely access your energy site through Tesla cloud APIs.
+    </p>
+    <p>
+      The dashboard includes live power flow visuals and dedicated graphs for solar,
+      battery, home, and grid metrics, with battery percentage trends for quick at-a-glance monitoring.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">com.sighmon.PowerwallTV.desktop</launchable>
   <content_rating type="oars-1.1"/>
+
+  <url type="homepage">https://github.com/sighmon/powerwall-tv-linux</url>
+  <url type="bugtracker">https://github.com/sighmon/powerwall-tv-linux/issues</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Powerwall TV dashboard with live energy flow and stats</caption>
+      <image>https://raw.githubusercontent.com/sighmon/powerwall-tv-linux/main/flatpak/screenshots/main.png</image>
+    </screenshot>
+  </screenshots>
+
   <categories>
     <category>Utility</category>
+    <category>Monitor</category>
   </categories>
+
   <provides>
     <binary>powerwall-tv</binary>
   </provides>
