@@ -6,29 +6,32 @@ import (
 
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
+	"powerwall-tv-gtk/internal/api"
 	"powerwall-tv-gtk/internal/auth"
 	statepkg "powerwall-tv-gtk/internal/state"
+	"powerwall-tv-gtk/internal/storage"
 )
 
 func startFleetLogin(parent gtk.IWindow, state *statepkg.State, status *gtk.Label) {
 	secrets := auth.LoadSecrets()
 	cfg := auth.Config{
-		ClientID:     secrets.ClientID,
-		ClientSecret: secrets.ClientSecret,
-		Scopes:       "openid energy_device_data offline_access",
-		FleetBaseURL: state.Prefs.FleetBaseURL,
+		ClientID:            secrets.ClientID,
+		ClientSecret:        secrets.ClientSecret,
+		Scopes:              "openid energy_device_data vehicle_device_data energy_cmds offline_access",
+		FleetBaseURL:        state.Prefs.FleetBaseURL,
+		PromptMissingScopes: true,
 	}
 
 	if cfg.ClientID == "" || cfg.ClientSecret == "" {
-		status.SetText("Missing Tesla client ID/secret")
+		setOAuthStatus(status, "Missing Tesla client ID/secret")
 		return
 	}
 
-	status.SetText("Opening Tesla login…")
+	setOAuthStatus(status, "Opening Tesla login…")
 
 	authURL, callbackURL, ln, expectedState, err := auth.StartOAuth(cfg)
 	if err != nil {
-		status.SetText("OAuth start failed: " + err.Error())
+		setOAuthStatus(status, "OAuth start failed: "+err.Error())
 		return
 	}
 	_ = auth.OpenBrowser(authURL)
@@ -38,20 +41,33 @@ func startFleetLogin(parent gtk.IWindow, state *statepkg.State, status *gtk.Labe
 
 	code, err := auth.AwaitCallback(ctx, ln, expectedState)
 	if err != nil {
-		status.SetText("Login failed: " + err.Error())
+		setOAuthStatus(status, "Login failed: "+err.Error())
 		return
 	}
 
-	status.SetText("Exchanging token…")
+	setOAuthStatus(status, "Exchanging token…")
 	tok, err := auth.ExchangeCode(ctx, cfg, code, callbackURL)
 	if err != nil {
-		status.SetText("Token exchange failed: " + err.Error())
+		setOAuthStatus(status, "Token exchange failed: "+err.Error())
 		return
 	}
 
-	auth.SaveStoredToken(*tok)
+	if err := auth.SaveStoredToken(*tok); err != nil {
+		setOAuthStatus(status, "Could not save login: "+err.Error())
+		return
+	}
+	if base, err := api.ResolveFleetBaseURL(tok.AccessToken); err == nil && base != "" && base != state.Prefs.FleetBaseURL {
+		state.Prefs.FleetBaseURL = base
+		_ = storage.SavePrefs(state.Prefs)
+		storage.ClearFleetTokens()
+		setOAuthStatus(status, "Tesla region found; restarting login…")
+		startFleetLogin(parent, state, status)
+		return
+	}
 
-	glib.IdleAdd(func() {
-		status.SetText("Logged in")
-	})
+	setOAuthStatus(status, "Logged in")
+}
+
+func setOAuthStatus(status *gtk.Label, text string) {
+	glib.IdleAdd(func() { status.SetText(text) })
 }

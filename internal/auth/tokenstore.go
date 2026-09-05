@@ -27,12 +27,14 @@ func LoadStoredToken() (StoredToken, error) {
 	return StoredToken{AccessToken: access, RefreshToken: refresh, Expiry: expiry}, nil
 }
 
-func SaveStoredToken(tok TokenResponse) {
-	_ = storage.SetFleetAccessToken(tok.AccessToken)
+func SaveStoredToken(tok TokenResponse) error {
+	var errs []error
+	errs = append(errs, storage.SetFleetAccessToken(tok.AccessToken))
 	if tok.RefreshToken != "" {
-		_ = storage.SetFleetRefreshToken(tok.RefreshToken)
+		errs = append(errs, storage.SetFleetRefreshToken(tok.RefreshToken))
 	}
 	if tok.ExpiresIn > 0 {
-		_ = storage.SetFleetExpiry(time.Now().Add(time.Duration(tok.ExpiresIn) * time.Second).Format(time.RFC3339))
+		errs = append(errs, storage.SetFleetExpiry(time.Now().Add(time.Duration(tok.ExpiresIn)*time.Second).Format(time.RFC3339)))
 	}
+	return errors.Join(errs...)
 }

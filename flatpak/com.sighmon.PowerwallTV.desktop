@@ -1,7 +1,8 @@
 [Desktop Entry]
 Name=Powerwall TV
-Exec=powerwall-tv
+Exec=powerwall-tv %u
 Type=Application
 Categories=Utility;
 Terminal=false
 Icon=com.sighmon.PowerwallTV
+MimeType=x-scheme-handler/powerwalltv;

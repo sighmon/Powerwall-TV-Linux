@@ -9,12 +9,13 @@ import (
 )
 
 const (
-	serviceName          = "com.sighmon.PowerwallTV"
-	legacyServiceName    = "org.sighmon.PowerwallTV"
-	keyGatewayPassword   = "gatewayPassword"
-	keyFleetAccessToken  = "fleet_access_token"
-	keyFleetRefreshToken = "fleet_refresh_token"
-	keyFleetExpiry       = "fleet_expiry"
+	serviceName           = "com.sighmon.PowerwallTV"
+	legacyServiceName     = "org.sighmon.PowerwallTV"
+	keyGatewayPassword    = "gatewayPassword"
+	keyFleetAccessToken   = "fleet_access_token"
+	keyFleetRefreshToken  = "fleet_refresh_token"
+	keyFleetExpiry        = "fleet_expiry"
+	keyElectricityMapsAPI = "electricityMaps_apiKey"
 )
 
 type fallbackSecrets map[string]string
@@ -91,17 +92,20 @@ func DeleteSecret(key string) error {
 	return saveFallbackSecrets(s)
 }
 
-func SetGatewayPassword(pw string) error { return SetSecret(keyGatewayPassword, pw) }
+func SetGatewayPassword(pw string) error  { return SetSecret(keyGatewayPassword, pw) }
 func GetGatewayPassword() (string, error) { return GetSecret(keyGatewayPassword) }
 
-func SetFleetAccessToken(t string) error { return SetSecret(keyFleetAccessToken, t) }
+func SetFleetAccessToken(t string) error   { return SetSecret(keyFleetAccessToken, t) }
 func GetFleetAccessToken() (string, error) { return GetSecret(keyFleetAccessToken) }
 
-func SetFleetRefreshToken(t string) error { return SetSecret(keyFleetRefreshToken, t) }
+func SetFleetRefreshToken(t string) error   { return SetSecret(keyFleetRefreshToken, t) }
 func GetFleetRefreshToken() (string, error) { return GetSecret(keyFleetRefreshToken) }
 
-func SetFleetExpiry(ts string) error { return SetSecret(keyFleetExpiry, ts) }
+func SetFleetExpiry(ts string) error  { return SetSecret(keyFleetExpiry, ts) }
 func GetFleetExpiry() (string, error) { return GetSecret(keyFleetExpiry) }
+
+func SetElectricityMapsAPIKey(key string) error { return SetSecret(keyElectricityMapsAPI, key) }
+func GetElectricityMapsAPIKey() (string, error) { return GetSecret(keyElectricityMapsAPI) }
 
 func ClearFleetTokens() {
 	_ = DeleteSecret(keyFleetAccessToken)

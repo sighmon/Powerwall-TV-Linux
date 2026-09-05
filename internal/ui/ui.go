@@ -19,7 +19,7 @@ func Run(state statepkg.State) error {
 		win.SetDefaultSize(1280, 720)
 		win.SetIconName("com.sighmon.PowerwallTV")
 
-		content, _ := buildMainView(&state, win)
+		content, _ := buildMainView(&state, win, app)
 		win.Add(content)
 		win.ShowAll()
 	})

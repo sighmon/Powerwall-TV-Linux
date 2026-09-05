@@ -3,18 +3,22 @@ package ui
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/gotk3/gotk3/cairo"
 	"github.com/gotk3/gotk3/gtk"
+	"powerwall-tv-gtk/internal/api"
 )
 
 type point struct {
-	t time.Time
-	v float64
+	t     time.Time
+	v     float64
+	color *[3]float64
 }
 
 type TimeSeries struct {
+	mu        sync.RWMutex
 	maxPoints int
 	points    []point
 }
@@ -24,6 +28,8 @@ func NewTimeSeries(max int) *TimeSeries {
 }
 
 func (s *TimeSeries) Add(t time.Time, v float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.points = append(s.points, point{t: t, v: v})
 	if len(s.points) > s.maxPoints {
 		s.points = s.points[len(s.points)-s.maxPoints:]
@@ -31,7 +37,38 @@ func (s *TimeSeries) Add(t time.Time, v float64) {
 }
 
 func (s *TimeSeries) Values() []point {
-	return s.points
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]point(nil), s.points...)
+}
+
+func (s *TimeSeries) Replace(samples []api.HistorySample) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.points = make([]point, 0, len(samples))
+	for _, sample := range samples {
+		color, ok := flowColor(sample.Flow)
+		var colorPtr *[3]float64
+		if ok {
+			colorPtr = &color
+		}
+		s.points = append(s.points, point{t: sample.Time, v: sample.Value, color: colorPtr})
+	}
+}
+
+func flowColor(name string) ([3]float64, bool) {
+	switch name {
+	case "blue":
+		return [3]float64{0.25, 0.5, 0.9}, true
+	case "yellow":
+		return [3]float64{0.95, 0.8, 0.2}, true
+	case "green":
+		return [3]float64{0.36, 0.82, 0.38}, true
+	case "gray":
+		return [3]float64{0.55, 0.55, 0.55}, true
+	default:
+		return [3]float64{}, false
+	}
 }
 
 type ChartsData struct {
@@ -53,14 +90,15 @@ func NewChartsData() *ChartsData {
 }
 
 type GraphView struct {
-	area      *gtk.DrawingArea
-	series    *TimeSeries
-	color     [3]float64
-	minY      float64
-	maxY      float64
-	autoRange bool
-	xLabel    string
-	yLabel    string
+	area         *gtk.DrawingArea
+	series       *TimeSeries
+	color        [3]float64
+	minY         float64
+	maxY         float64
+	autoRange    bool
+	xLabel       string
+	yLabel       string
+	displayScale float64
 }
 
 func NewGraphView(series *TimeSeries, minY, maxY float64, color [3]float64) (*GraphView, error) {
@@ -68,7 +106,7 @@ func NewGraphView(series *TimeSeries, minY, maxY float64, color [3]float64) (*Gr
 	area.SetSizeRequest(600, 200)
 	area.SetHExpand(true)
 	area.SetVExpand(true)
-	gv := &GraphView{area: area, series: series, color: color, minY: minY, maxY: maxY, xLabel: "Time", yLabel: "Value"}
+	gv := &GraphView{area: area, series: series, color: color, minY: minY, maxY: maxY, xLabel: "Time", yLabel: "Value", displayScale: 1}
 	area.Connect("draw", func(_ *gtk.DrawingArea, cr *cairo.Context) {
 		gv.draw(cr)
 	})
@@ -87,6 +125,8 @@ func (g *GraphView) SetLabels(xLabel, yLabel string) {
 func (g *GraphView) SetAutoRange(v bool) {
 	g.autoRange = v
 }
+
+func (g *GraphView) SetDisplayScale(scale float64) { g.displayScale = scale }
 
 func (g *GraphView) draw(cr *cairo.Context) {
 	alloc := g.area.GetAllocation()
@@ -209,7 +249,12 @@ func (g *GraphView) draw(cr *cairo.Context) {
 			continue // explicit zero label is drawn on zero line
 		}
 		cr.MoveTo(6, y+4)
-		cr.ShowText(fmt.Sprintf("%.0f", val))
+		displayed := val * g.displayScale
+		if math.Abs(displayed) < 10 && g.displayScale != 1 {
+			cr.ShowText(fmt.Sprintf("%.1f", displayed))
+		} else {
+			cr.ShowText(fmt.Sprintf("%.0f", displayed))
+		}
 	}
 	for i := 0; i <= 4; i++ {
 		x := 40 + plotW*float64(i)/4
@@ -219,7 +264,10 @@ func (g *GraphView) draw(cr *cairo.Context) {
 	}
 
 	// Build render coords first.
-	type xy struct{ x, y float64 }
+	type xy struct {
+		x, y, v float64
+		color   *[3]float64
+	}
 	coords := make([]xy, 0, len(pts))
 	for _, p := range pts {
 		x := 40 + plotW*(p.t.Sub(start).Seconds()/end.Sub(start).Seconds())
@@ -227,7 +275,7 @@ func (g *GraphView) draw(cr *cairo.Context) {
 		if math.IsNaN(y) || math.IsInf(y, 0) {
 			continue
 		}
-		coords = append(coords, xy{x: x, y: y})
+		coords = append(coords, xy{x: x, y: y, v: p.v, color: p.color})
 	}
 	if len(coords) < 2 {
 		return
@@ -243,21 +291,35 @@ func (g *GraphView) draw(cr *cairo.Context) {
 	}
 	baselineY := 10 + plotH*(1-((baselineVal-minY)/(maxY-minY)))
 
-	cr.SetSourceRGBA(g.color[0], g.color[1], g.color[2], 0.25)
-	cr.MoveTo(coords[0].x, baselineY)
-	for _, c := range coords {
-		cr.LineTo(c.x, c.y)
+	segmentColor := func(value *[3]float64) [3]float64 {
+		if value != nil {
+			return *value
+		}
+		return g.color
 	}
-	cr.LineTo(coords[len(coords)-1].x, baselineY)
-	cr.ClosePath()
-	cr.Fill()
-
-	// line (actual value, including negatives)
-	cr.SetSourceRGB(g.color[0], g.color[1], g.color[2])
-	cr.SetLineWidth(2)
-	cr.MoveTo(coords[0].x, coords[0].y)
-	for i := 1; i < len(coords); i++ {
-		cr.LineTo(coords[i].x, coords[i].y)
+	drawSegment := func(a, b xy, color [3]float64) {
+		cr.SetSourceRGBA(color[0], color[1], color[2], 0.25)
+		cr.MoveTo(a.x, baselineY)
+		cr.LineTo(a.x, a.y)
+		cr.LineTo(b.x, b.y)
+		cr.LineTo(b.x, baselineY)
+		cr.ClosePath()
+		cr.Fill()
+		cr.SetSourceRGB(color[0], color[1], color[2])
+		cr.SetLineWidth(2)
+		cr.MoveTo(a.x, a.y)
+		cr.LineTo(b.x, b.y)
+		cr.Stroke()
 	}
-	cr.Stroke()
+	for i := 0; i < len(coords)-1; i++ {
+		a, b := coords[i], coords[i+1]
+		if (a.v >= 0 && b.v < 0) || (a.v < 0 && b.v >= 0) {
+			ratio := a.v / (a.v - b.v)
+			zero := xy{x: a.x + ratio*(b.x-a.x), y: baselineY, v: 0}
+			drawSegment(a, zero, segmentColor(a.color))
+			drawSegment(zero, b, segmentColor(b.color))
+		} else {
+			drawSegment(a, b, segmentColor(a.color))
+		}
+	}
 }

@@ -22,8 +22,9 @@
       Tesla to securely access your energy site through Tesla cloud APIs.
     </p>
     <p>
-      The dashboard includes live power flow visuals and dedicated graphs for solar,
-      battery, home, and grid metrics, with battery percentage trends for quick at-a-glance monitoring.
+      The dashboard includes resize-aware live power flow, Wall Connector and vehicle
+      charging state, multi-site navigation, grid carbon data, reserve-aware Powerwall
+      runtime estimates, daily Fleet history graphs, and a beta operating-mode scheduler.
     </p>
   </description>
 

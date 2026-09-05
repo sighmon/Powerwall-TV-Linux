@@ -35,3 +35,23 @@ modules:
     sources:
       - type: dir
         path: ..
+      - type: file
+        url: https://raw.githubusercontent.com/sighmon/powerwall-tv/61fa91856357cdd68cc0d1823c9ffaf2e853b4fe/Powerwall-TV/Images/home.png
+        sha256: 6f2cbfe8f93c4ad0532ea65ab80bc16544ddc04bb3cdd2fb8173f5f1e16125b9
+        dest: assets/images
+      - type: file
+        url: https://raw.githubusercontent.com/sighmon/powerwall-tv/61fa91856357cdd68cc0d1823c9ffaf2e853b4fe/Powerwall-TV/Images/home-charger.png
+        sha256: a2e8e341680637d7e3b46b6b2202ca8c65d88fccb7f6d8bf746fa934c83787b9
+        dest: assets/images
+      - type: file
+        url: https://raw.githubusercontent.com/sighmon/powerwall-tv/61fa91856357cdd68cc0d1823c9ffaf2e853b4fe/Powerwall-TV/Images/home-charger-empty.png
+        sha256: a865f160e667f28e73a3e60d39b1e97e2a80cb37e28d1bcfac45ace2bc43cb6a
+        dest: assets/images
+      - type: file
+        url: https://raw.githubusercontent.com/sighmon/powerwall-tv/61fa91856357cdd68cc0d1823c9ffaf2e853b4fe/Powerwall-TV/Images/home-charger-cybertruck.png
+        sha256: e794cd257a58a558c19e4310d4d307380de78ae64ed3a806b5d921829669e428
+        dest: assets/images
+      - type: file
+        url: https://raw.githubusercontent.com/sighmon/powerwall-tv/61fa91856357cdd68cc0d1823c9ffaf2e853b4fe/Powerwall-TV/Images/off-grid.png
+        sha256: fca49fb2abef00b0af4f0f57c310da96dc0d72cbe4b1c254e727ba4cde4ec7f6
+        dest: assets/images

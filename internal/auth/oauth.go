@@ -6,18 +6,22 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
 
 type Config struct {
-	ClientID     string
-	ClientSecret string
-	Scopes       string
-	FleetBaseURL string
+	ClientID            string
+	ClientSecret        string
+	Scopes              string
+	FleetBaseURL        string
+	PromptMissingScopes bool
 }
 
 type TokenResponse struct {
@@ -34,12 +38,13 @@ func randomState() string {
 
 func StartOAuth(cfg Config) (authURL string, callbackURL string, listener net.Listener, state string, err error) {
 	state = randomState()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	path := oauthSocketPath()
+	_ = os.Remove(path)
+	ln, err := net.Listen("unix", path)
 	if err != nil {
 		return "", "", nil, "", err
 	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	callbackURL = fmt.Sprintf("http://127.0.0.1:%d/callback", port)
+	callbackURL = "powerwalltv://app/callback"
 
 	q := url.Values{}
 	q.Set("client_id", cfg.ClientID)
@@ -47,45 +52,86 @@ func StartOAuth(cfg Config) (authURL string, callbackURL string, listener net.Li
 	q.Set("response_type", "code")
 	q.Set("scope", cfg.Scopes)
 	q.Set("state", state)
+	if cfg.PromptMissingScopes {
+		q.Set("prompt_missing_scopes", "true")
+	}
 
 	authURL = "https://auth.tesla.com/oauth2/v3/authorize?" + q.Encode()
 	return authURL, callbackURL, ln, state, nil
 }
 
 func AwaitCallback(ctx context.Context, ln net.Listener, expectedState string) (code string, err error) {
-	mux := http.NewServeMux()
-	result := make(chan string, 1)
-
-	srv := &http.Server{Handler: mux}
-	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		_ = r.ParseForm()
-		if r.FormValue("state") != expectedState {
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte("Invalid state"))
-			return
-		}
-		code = r.FormValue("code")
-		if code == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte("Missing code"))
-			return
-		}
-		_, _ = w.Write([]byte("Login complete. You can close this window."))
-		result <- code
-	})
-
+	defer os.Remove(oauthSocketPath())
+	type result struct {
+		code string
+		err  error
+	}
+	results := make(chan result, 1)
 	go func() {
-		_ = srv.Serve(ln)
+		conn, err := ln.Accept()
+		if err != nil {
+			results <- result{err: err}
+			return
+		}
+		defer conn.Close()
+		data, err := io.ReadAll(io.LimitReader(conn, 64*1024))
+		if err != nil {
+			results <- result{err: err}
+			return
+		}
+		callback, err := parseOAuthCallback(string(data), expectedState)
+		results <- result{code: callback, err: err}
 	}()
 
 	select {
 	case <-ctx.Done():
-		_ = srv.Close()
+		_ = ln.Close()
 		return "", ctx.Err()
-	case code := <-result:
-		_ = srv.Close()
-		return code, nil
+	case result := <-results:
+		_ = ln.Close()
+		return result.code, result.err
 	}
+}
+
+func parseOAuthCallback(raw, expectedState string) (string, error) {
+	callback, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	if callback.Scheme != "powerwalltv" || callback.Host != "app" || callback.Path != "/callback" {
+		return "", fmt.Errorf("invalid OAuth callback")
+	}
+	if callback.Query().Get("state") != expectedState {
+		return "", fmt.Errorf("invalid OAuth state")
+	}
+	code := callback.Query().Get("code")
+	if code == "" {
+		return "", fmt.Errorf("missing OAuth code")
+	}
+	return code, nil
+}
+
+func ForwardOAuthCallback(args []string) (bool, error) {
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "powerwalltv://") {
+			continue
+		}
+		conn, err := net.DialTimeout("unix", oauthSocketPath(), 5*time.Second)
+		if err != nil {
+			return true, err
+		}
+		_, writeErr := io.WriteString(conn, arg)
+		closeErr := conn.Close()
+		if writeErr != nil {
+			return true, writeErr
+		}
+		return true, closeErr
+	}
+	return false, nil
+}
+
+func oauthSocketPath() string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("powerwall-tv-oauth-%d.sock", os.Getuid()))
 }
 
 func ExchangeCode(ctx context.Context, cfg Config, code string, callbackURL string) (*TokenResponse, error) {
