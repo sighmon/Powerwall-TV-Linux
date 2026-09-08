@@ -77,3 +77,76 @@ func visualDimension(name string, fallback int) int {
 	}
 	return value
 }
+
+// Exercise real GTK allocations after delayed data and in both resize directions.
+func TestDashboardMetricSpacing(t *testing.T) {
+	if os.Getenv("POWERWALL_VISUAL_OUTPUT") == "" {
+		t.Skip("set POWERWALL_VISUAL_OUTPUT to run the GTK layout regression test")
+	}
+	if err := gtk.InitCheck(nil); err != nil {
+		t.Fatal(err)
+	}
+	window, err := gtk.OffscreenWindowNew()
+	if err != nil {
+		t.Fatal(err)
+	}
+	window.SetDefaultSize(1280, 720)
+	state := &statepkg.State{Prefs: storage.DefaultPrefs()}
+	state.Prefs.LoginMode = storage.LoginModeLocal
+	state.Prefs.GatewayIP = "demo"
+	root, w, err := buildDashboard(state, NewChartsData(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	window.Add(root)
+	window.ShowAll()
+	check := func(stage string, width, height int) {
+		if w.width != width || w.height != height {
+			t.Errorf("%s: dashboard size = %dx%d, want %dx%d", stage, w.width, w.height, width, height)
+		}
+		for value, box := range w.metricBoxes {
+			children := box.GetChildren()
+			label := children.NthData(1).(*gtk.Widget)
+			children.Free()
+			va, la := value.GetAllocation(), label.GetAllocation()
+			if gap := la.GetY() - va.GetY() - va.GetHeight(); gap != metricLineSpacing {
+				name, _ := value.GetText()
+				t.Errorf("%s: %s gap = %d, want %d", stage, name, gap, metricLineSpacing)
+			}
+		}
+		if w.solarVal.GetLineWrap() {
+			t.Errorf("%s: solar value unexpectedly wraps", stage)
+		}
+	}
+	glib.TimeoutAdd(100, func() bool {
+		for value := range w.metricBoxes {
+			setValue(value, "")
+		}
+		return false
+	})
+	glib.TimeoutAdd(250, func() bool {
+		for value := range w.metricBoxes {
+			setValue(value, "12.345 kW")
+		}
+		return false
+	})
+	glib.TimeoutAdd(450, func() bool {
+		check("late data", 1280, 720)
+		window.SetDefaultSize(800, 600)
+		window.Resize(800, 600)
+		return false
+	})
+	glib.TimeoutAdd(650, func() bool {
+		check("shrink", 800, 600)
+		window.SetDefaultSize(1600, 900)
+		window.Resize(1600, 900)
+		return false
+	})
+	glib.TimeoutAdd(900, func() bool {
+		check("grow", 1600, 900)
+		window.Destroy()
+		gtk.MainQuit()
+		return false
+	})
+	gtk.Main()
+}

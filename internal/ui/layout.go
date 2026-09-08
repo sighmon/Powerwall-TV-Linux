@@ -7,20 +7,13 @@ const (
 	designHeight        = 720.0
 	homeControlsPadding = 24
 	summaryEnergyValueY = 30.0
-	summaryEnergyLabelY = 60.0
+	metricLineSpacing   = 4
 
 	minSceneScale  = 0.80
 	maxSceneScale  = 1.20
 	minSceneOffset = -0.20
 	maxSceneOffset = 0.20
 )
-
-func metricLineGap(availableWidth float64, solar bool) float64 {
-	if solar && availableWidth < designWidth {
-		return 8
-	}
-	return 2
-}
 
 func homeControlsPosition(availableHeight, controlsHeight int) (x, y int) {
 	x = homeControlsPadding

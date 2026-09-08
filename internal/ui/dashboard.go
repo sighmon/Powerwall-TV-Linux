@@ -72,6 +72,7 @@ type dashboardWidgets struct {
 	vehicleListAt      time.Time
 	vehicleCacheGen    uint64
 	layoutGeneration   uint64
+	metricBoxes        map[*gtk.Label]*gtk.Box
 
 	siteName   *gtk.Label
 	energyVal  *gtk.Label
@@ -169,18 +170,23 @@ func buildDashboard(state *statepkg.State, charts *ChartsData, graphs *graphsWid
 	w.error.SetMarkup("<span foreground='red'></span>")
 
 	w.fixed.Put(w.siteName, 20, 20)
-	w.fixed.Put(w.energyVal, 20, 60)
-	w.fixed.Put(w.energyLbl, 20, 85)
-	w.fixed.Put(w.solarVal, 404, 60)
-	w.fixed.Put(w.solarLbl, 404, 85)
-	w.fixed.Put(w.homeVal, 942, 60)
-	w.fixed.Put(w.homeLbl, 942, 85)
-	w.fixed.Put(w.batteryVal, 504, 615)
-	w.fixed.Put(w.batteryLbl, 504, 640)
-	w.fixed.Put(w.gridVal, 942, 615)
-	w.fixed.Put(w.gridLbl, 942, 640)
-	w.fixed.Put(w.vehicleVal, 60, 140)
-	w.fixed.Put(w.vehicleLbl, 60, 165)
+	w.metricBoxes = make(map[*gtk.Label]*gtk.Box)
+	for _, pair := range [][2]*gtk.Label{
+		{w.energyVal, w.energyLbl}, {w.solarVal, w.solarLbl},
+		{w.homeVal, w.homeLbl}, {w.batteryVal, w.batteryLbl},
+		{w.gridVal, w.gridLbl}, {w.vehicleVal, w.vehicleLbl},
+	} {
+		box, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, metricLineSpacing)
+		for _, label := range pair {
+			label.SetHAlign(gtk.ALIGN_FILL)
+			box.PackStart(label, false, false, 0)
+		}
+		w.metricBoxes[pair[0]] = box
+		w.fixed.Put(box, 0, 0)
+		// Text arriving after the first layout can change the pair's size.
+		// Recenter the pair without resetting its fonts or allocating its children.
+		box.Connect("size-allocate", func() { w.positionMetrics() })
+	}
 	w.fixed.Put(w.error, 20, 120)
 
 	overlay.Connect("size-allocate", func(_ *gtk.Overlay) {
@@ -268,8 +274,6 @@ func refresh(state *statepkg.State, w *dashboardWidgets) {
 		w.gridP = snap.Data.Site.InstantPower
 		setValue(w.solarVal, formatKW(snap.Data.Solar.InstantPower, state.Prefs.ShowLessPrecision))
 		setSmall(w.solarLbl, "SOLAR")
-		w.solarVal.SetMaxWidthChars(12)
-		w.solarVal.SetLineWrap(true)
 		setValue(w.homeVal, formatKW(w.homeP, state.Prefs.ShowLessPrecision))
 		setSmall(w.homeLbl, "HOME")
 		w.runtime.record(snap.Data.Battery.InstantPower, time.Now())
@@ -450,8 +454,6 @@ func refreshFleet(state *statepkg.State, w *dashboardWidgets) {
 		w.gridP = snap.Status.GridPower
 		setValue(w.solarVal, formatKW(snap.Status.SolarPower, state.Prefs.ShowLessPrecision))
 		setSmall(w.solarLbl, "SOLAR")
-		w.solarVal.SetMaxWidthChars(12)
-		w.solarVal.SetLineWrap(true)
 		setValue(w.homeVal, formatKW(w.homeP, state.Prefs.ShowLessPrecision))
 		setSmall(w.homeLbl, "HOME")
 		w.runtime.record(snap.Status.BatteryPower, time.Now())
@@ -1444,35 +1446,7 @@ func (w *dashboardWidgets) relayout() {
 	move := func(widget gtk.IWidget, x, y float64) {
 		w.fixed.Move(widget, int(offX+x*scale), int(offY+y*scale))
 	}
-	placeMetric := func(value, label gtk.IWidget, nx, ny, gap float64) {
-		_, valueWidth := value.ToWidget().GetPreferredWidth()
-		_, labelWidth := label.ToWidget().GetPreferredWidth()
-		_, valueHeight := value.ToWidget().GetPreferredHeight()
-		_, labelHeight := label.ToWidget().GetPreferredHeight()
-		width := valueWidth
-		if labelWidth > width {
-			width = labelWidth
-		}
-		totalHeight := float64(valueHeight+labelHeight) + gap
-		centerX := offX + (0.5+nx)*w.scene.width
-		centerY := offY + (0.5+ny)*w.scene.height
-		x := int(centerX - float64(width)/2)
-		y := int(centerY - float64(totalHeight)/2)
-		w.fixed.Move(value, x, y)
-		w.fixed.Move(label, x, y+valueHeight+int(gap))
-	}
-	// These are the normalized scene points from ContentView.sceneDataOverlay.
-	// Keeping the semantic coordinates here makes every overlay follow the same
-	// resize, crop, scale and user-offset transform as the background.
-	placeMetric(w.solarVal, w.solarLbl, 0.087, -0.40, metricLineGap(ww, true))
-	placeMetric(w.homeVal, w.homeLbl, 0.25, -0.30, metricLineGap(ww, false))
-	placeMetric(w.batteryVal, w.batteryLbl, 0.03, 0.40, metricLineGap(ww, false))
-	gridX := 0.25
-	if w.renewablePercent != nil || w.carbonIntensity != nil {
-		gridX = 0.28
-	}
-	placeMetric(w.gridVal, w.gridLbl, gridX, 0.40, metricLineGap(ww, false))
-	placeMetric(w.vehicleVal, w.vehicleLbl, -0.104, -0.40, metricLineGap(ww, false))
+	w.positionMetrics()
 	if path := resolveBackgroundPath("off-grid.png"); path != "" {
 		iconWidth := int(0.052 * w.scene.width)
 		iconHeight := int(0.056 * w.scene.height)
@@ -1501,8 +1475,7 @@ func (w *dashboardWidgets) relayout() {
 		summaryY = 24
 	}
 	move(w.siteName, (summaryX-offX)/scale, (summaryY-offY)/scale)
-	move(w.energyVal, (summaryX-offX)/scale, (summaryY-offY)/scale+summaryEnergyValueY)
-	move(w.energyLbl, (summaryX-offX)/scale, (summaryY-offY)/scale+summaryEnergyLabelY)
+	move(w.metricBoxes[w.energyVal], (summaryX-offX)/scale, (summaryY-offY)/scale+summaryEnergyValueY)
 	move(w.error, (summaryX-offX)/scale, (summaryY-offY)/scale+87)
 	if w.bgName != "" {
 		w.setBackground(w.bgName)
@@ -1510,6 +1483,30 @@ func (w *dashboardWidgets) relayout() {
 	if w.lines != nil {
 		w.lines.QueueDraw()
 	}
+}
+
+// Keep each pair centered on its scene anchor; GTK owns the spacing inside it.
+func (w *dashboardWidgets) positionMetrics() {
+	if w.scene.width <= 0 || w.fixed == nil {
+		return
+	}
+	place := func(value *gtk.Label, nx, ny float64) {
+		box := w.metricBoxes[value]
+		_, width := box.GetPreferredWidth()
+		_, height := box.GetPreferredHeight()
+		x := int(w.scene.x + (0.5+nx)*w.scene.width - float64(width)/2)
+		y := int(w.scene.y + (0.5+ny)*w.scene.height - float64(height)/2)
+		w.fixed.Move(box, x, y)
+	}
+	place(w.solarVal, 0.087, -0.40)
+	place(w.homeVal, 0.25, -0.30)
+	place(w.batteryVal, 0.03, 0.40)
+	gridX := 0.25
+	if w.renewablePercent != nil || w.carbonIntensity != nil {
+		gridX = 0.28
+	}
+	place(w.gridVal, gridX, 0.40)
+	place(w.vehicleVal, -0.104, -0.40)
 }
 
 func (w *dashboardWidgets) setOffGridImage(show bool) {

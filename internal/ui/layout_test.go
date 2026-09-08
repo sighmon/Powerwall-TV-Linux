@@ -62,18 +62,6 @@ func TestHomeControlsPositionKeepsMinimumEdgePadding(t *testing.T) {
 	}
 }
 
-func TestSolarMetricGetsExtraNarrowLayoutSpacing(t *testing.T) {
-	if got := metricLineGap(800, true); got != 8 {
-		t.Fatalf("narrow solar gap = %v, want 8", got)
-	}
-	if got := metricLineGap(1280, true); got != 2 {
-		t.Fatalf("natural solar gap = %v, want 2", got)
-	}
-	if got := metricLineGap(800, false); got != 2 {
-		t.Fatalf("other narrow metric gap = %v, want 2", got)
-	}
-}
-
 func float64Pointer(value float64) *float64 { return &value }
 
 func TestFleetWallConnectorSummary(t *testing.T) {
