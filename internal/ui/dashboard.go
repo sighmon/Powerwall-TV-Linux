@@ -1236,7 +1236,12 @@ func (w *dashboardWidgets) drawPowerLines(cr *cairo.Context) {
 	pathSolarToHub = offsetPath(pathSolarToHub, pathShift, 0)
 	pathGridToHub = offsetPath(pathGridToHub, pathShift, 0)
 	pathPowerwallToHub = offsetPath(pathPowerwallToHub, 0, -pathShift)
+	pathPowerwallToHub[len(pathPowerwallToHub)-1].y += 2
 	pathHubToHome = offsetPath(pathHubToHome, 0, -pathShift)
+	// Align the home endpoint and the full grid path with the background.
+	const homeGridDrop = 3.0
+	pathHubToHome[len(pathHubToHome)-1].y += homeGridDrop
+	pathGridToHub = offsetPath(pathGridToHub, 0, homeGridDrop)
 
 	polyLen := func(path []p2) float64 {
 		t := 0.0
