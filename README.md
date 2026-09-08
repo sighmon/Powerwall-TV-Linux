@@ -2,6 +2,8 @@
 
 GTK-based Linux desktop app for Powerwall TV.
 
+<img src="screenshot.png" width="100%" />
+
 Ported from [Powerwall-TV for tvOS](https://github.com/sighmon/Powerwall-TV) by [OpenClaw](https://github.com/openclaw/openclaw) using `gpt-5.3-codex`.
 
 ## Features
